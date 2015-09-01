@@ -1,110 +1,112 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import javax.swing.*;
+
+//Multithreaded server
 
 public class ChatAppServer
 {
-	//Thread for the class
-	private static class ChatThread extends Thread
+	private static class UserThread extends Thread 
 	{
-		public ChatThread(Socket socket) { this.m_socket = socket;}
+		//Create the thread and copy the socket
+		public UserThread(Socket socket) { this.m_socket = socket; }
 		
 		public void run()
 		{
 			try
 			{
-				//Make sure that we can send more than bytes
 				m_in = new BufferedReader(new InputStreamReader(m_socket.getInputStream()));
 				m_out = new PrintWriter(m_socket.getOutputStream(), true);
 				
+				//Request name for client
 				while (true)
 				{
-					m_out.println("Please input your name.");
+					m_out.println("NAME:");
+					m_name = m_in.readLine();
 					
-					m_clientName = m_in.readLine();
-					
-					if (m_clientName == null)
+					if (m_name == null)
 						return;
 					
-					synchronized (m_names)
+					//Make sure our threads don't interfere with each other and have memory issues
+					synchronized(m_clientNames)
 					{
-						if (!m_names.contains(m_clientName))
+						if (!m_clientNames.contains(m_name))
 						{
-							m_names.add(m_clientName);
-							
+							m_clientNames.add(m_name);
 							break;
 						}
 					}
 				}
 				
-				m_out.println("Welcome, " + m_clientName + ".");
-				m_writers.add(m_out);
+				m_out.println("NAMEGOOD");
+				m_clientWriters.add(m_out);
 				
-				m_out.println("To disconnect, type ded.");
-				
+				//Start accepting messages from the client
 				while (true)
 				{
-					String buffer = m_in.readLine();
+					String bufferedInput = m_in.readLine();
 					
-					if (buffer == null)
+					if (bufferedInput == null)
 						return;
 					
-					else if (buffer == "ded")
+					for (PrintWriter i : m_clientWriters)
 					{
-						m_names.remove(m_clientName);
-						m_writers.remove(m_out);
-						m_socket.close();
+						i.println("MSG " + m_name + ": " + bufferedInput);
 						
-						m_out.println("Bye!");
-						
-						break;
+						m_messageArea.append(m_name + ": " + bufferedInput + "\n");
 					}
-					
-					for (PrintWriter writer : m_writers)
-						writer.println(m_clientName + ": " + buffer);
 				}
-			} catch (IOException e) { System.out.println(e);
-			} finally 
+				
+			} catch (IOException e) { System.out.println(e); } finally
 			{
-                if (m_clientName != null)
-                    m_names.remove(m_clientName);
-      
-                if (m_out != null)
-                    m_writers.remove(m_out);
-                
-                try { m_socket.close(); } catch (IOException e) {}
+				//Clean up stuff if the server is failing
+				if (m_name != null)
+					m_clientNames.remove(m_name);
+				
+				if (m_out != null)
+					m_clientWriters.remove(m_out);
+				
+				try { m_socket.close(); } catch (IOException e) {}
 			}
-			}
-			
+		}
 		
+		private String m_name;
+		private Socket m_socket;
 		private BufferedReader m_in;
 		private PrintWriter m_out;
-		private Socket m_socket;
-		private int m_clientNum;
-		private String m_clientName;
 	}
 	
-	//public methods
-	public static void main(String[] args) throws IOException
+	public static void main(String[] args) throws Exception
 	{
+		m_frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		m_frame.setVisible(true);
+		
+		//Init the GUI elements
+		m_messageArea.setEditable(false);
+		
+		m_frame.getContentPane().add(new JScrollPane(m_messageArea), "Center");
+		m_frame.pack();
+		
+		m_messageArea.append("Chat server is initializing.\n");
+		m_messageArea.append("Created by Peter Senyszyn\n");
+
 		ServerSocket listener = new ServerSocket(PORT);
+		
+		m_messageArea.append("Server now running on port: " + PORT + ".\n");
 		
 		try
 		{
-			while (true) 
-			{
-				System.out.println("Server is running!");
-				new ChatThread(listener.accept()).start();
-			}
+			while (true)
+				new UserThread(listener.accept()).start();
 		} finally { listener.close(); }
 	}
 	
-	//private vars
-	private static final int PORT = 1337;
+	private static int PORT = 1337;
 	
-	//All of the clients in the chat room
-    private static HashSet<String> m_names = new HashSet<String>();
-
-    //A sort of queue for the messages
-    private static HashSet<PrintWriter> m_writers = new HashSet<PrintWriter>();
+	private static HashSet<String> m_clientNames = new HashSet<String>();
+	private static HashSet<PrintWriter> m_clientWriters = new HashSet<PrintWriter>();	
+	
+	static JFrame m_frame = new JFrame("Chat Server - v1.0");
+	static JTextArea m_messageArea = new JTextArea(8, 40);
 }
